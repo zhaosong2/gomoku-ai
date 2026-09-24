@@ -1,5 +1,7 @@
 # 五子棋人机对战引擎 · Gomoku / Renju AI
 
+> 另有 **[English README](README.en.md)** 版本。
+
 > A zero-dependency, browser-based **Gomoku (Five-in-a-Row)** engine with a strong AI.
 > Supports both **Freestyle** (no forbidden points) and **Renju** (forbidden-point) rules,
 > plus kifu reading, multi-candidate hints, position judgement, an opening book and a

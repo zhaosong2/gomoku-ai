@@ -1,0 +1,43 @@
+{
+ "stamp": "2026-09-20T17:29:36.078Z",
+ "note": "A13-complete-batch4",
+ "env": {
+  "node": "v22.22.2",
+  "plat": "win32",
+  "cores": 4
+ },
+ "positions": {
+  "file": "test/data/positions40.json",
+  "n": 40,
+  "sha": "b90083cf5d9c"
+ },
+ "mates": {
+  "attackPass": 40,
+  "defensePass": 8,
+  "totalNodes": 111317,
+  "maxNodes": 14683,
+  "meanNodes": 2783,
+  "bands": {
+   "T1": 29,
+   "T2": 8,
+   "T3": 3
+  }
+ },
+ "search": {
+  "depthFixedTotalNodes": 821409,
+  "depthFixedNodesH0": 3150690,
+  "timeDepthMean": 4.75,
+  "timeDepthQuiet": 40,
+  "timeMs": 60,
+  "nps": 22474
+ },
+ "micro": {
+  "staticEval": 5.28,
+  "staticEvalPos": 0.96,
+  "levelAt": 0.222,
+  "candidates": 1.39,
+  "winningPoints": 7.067,
+  "makeMove": 2.017,
+  "forbiddenAt": 3.614
+ }
+}

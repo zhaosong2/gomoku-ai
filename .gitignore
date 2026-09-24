@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+
+# WorkBuddy internal data (project state, not source)
+.workbuddy/
+
+# License-restricted datasets (not redistributed; see README "Data & License")
+data-raw/
+test/data/positions-renjunet.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Local overrides
+.local/
+.env

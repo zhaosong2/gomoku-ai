@@ -1,0 +1,29 @@
+{
+  "name": "gomoku-ai",
+  "version": "3.41.0",
+  "description": "纯前端、零依赖的网页五子棋人机对战引擎：无禁手/有禁手双模式，含棋谱读取、多候选提示、形势判断、开局库与机器证明的杀棋题库。",
+  "keywords": [
+    "gomoku",
+    "renju",
+    "five-in-a-row",
+    "gobang",
+    "ai",
+    "game",
+    "web",
+    "zero-dependency"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "node build.mjs",
+    "build:worker": "node tools/build-worker-src.js",
+    "test": "node --test test/*.test.js",
+    "bench:elo": "node tools/bench-elo.js",
+    "bench:eval": "node tools/bench-eval.js",
+    "bench:search": "node tools/bench-search.js",
+    "gen:book": "node tools/gen-book.js",
+    "gen:mates": "node tools/gen-mates.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

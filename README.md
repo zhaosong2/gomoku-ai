@@ -9,8 +9,7 @@
 >
 > **English abstract:** Pure-frontend, dependency-free Gomoku AI. Double-click `gomoku.html`
 > to play (works under `file://`). Engine is plain-logic (no DOM), runs in browser and Node.
-> See `docs/design.md` for the full technical spec (v3.41) and `docs/optimization-plan.md` for
-> milestones & benchmarks.
+> See [`docs/design.md`](docs/design.md) for the full technical spec (v3.41).
 
 ---
 
@@ -69,9 +68,8 @@ gomoku-ai/
 ├── ui/                   # 界面层（渲染 / 交互 / 棋谱面板 / 提示 / 触屏）
 ├── test/                 # 单元测试（node:test，共 309 项）
 ├── tools/                # 构建 / 基准 / 生成 / 验证工具
-├── docs/                 # 设计文档与优化计划
-│   ├── design.md         # 完整技术设计（v3.41）
-│   └── optimization-plan.md  # 工程里程碑与基准（v1.4）
+├── docs/                 # 设计文档
+│   └── design.md         # 完整技术设计（v3.41）
 └── assets/               # 截图
 ```
 
@@ -84,7 +82,7 @@ gomoku-ai/
 - **评估**：§4（棋型评分表、手番与参考系、禁手=打分惩罚而非禁止）。
 - **规则**：§7（无禁手 / 有禁手分离）、§8（禁手判定，五连优先）。
 - **开局库**：§12（26 开局 + 前缀匹配树）；**VCF/VCT**：§6；**Worker 协议**：§28。
-- **完整规格**：[`docs/design.md`](docs/design.md)（v3.41）；**工程里程碑 / 基准 / 诚实结论**：[`docs/optimization-plan.md`](docs/optimization-plan.md)。
+- **完整规格**：[`docs/design.md`](docs/design.md)（v3.41）。
 
 ---
 
@@ -92,7 +90,7 @@ gomoku-ai/
 
 本项目对"棋力提升"采取**实测不声称**原则：每一项增强都经过自对弈 **Elo + 95% 置信区间**验证；
 当 CI 含 0 时不宣称强度提升。例如 VCF/VCT 把杀棋延迟降低 10 倍以上、发现率无可见提升，
-而 30 局自对弈 Elo 为 +11.6（CI [−112.8, +136.0]）——故不声称棋力提升。详见 `docs/optimization-plan.md` §17.2。
+而 30 局自对弈 Elo 为 +11.6（CI [−112.8, +136.0]）——故不声称棋力提升。
 
 ---
 
@@ -117,5 +115,3 @@ gomoku-ai/
 - 位棋盘（M3c，候选）
 - 难度 DIFFICULTY 复标定（M9，候选）
 - 真实 Renju 题集接入（替换构造题库，格式不变）
-
-详见 `docs/optimization-plan.md` 的"可选后续"。

@@ -16,7 +16,7 @@
 ## 测试
 
 - 新功能请补 `test/*.test.js`（基于 Node 内置 `node:test`，零依赖）。
-- 棋力相关改动须附自对弈 Elo 与 95% 置信区间；若 CI 含 0，不宣称棋力提升（见 `docs/optimization-plan.md` §17.2）。
+- 棋力相关改动须附自对弈 Elo 与 95% 置信区间；若 CI 含 0，不宣称棋力提升。
 - 运行全部测试：`npm test`。
 
 ## 提交

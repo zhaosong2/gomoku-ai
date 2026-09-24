@@ -7,12 +7,11 @@
 >
 > **中文说明：** 本文档为英文版，[中文 README](../README.md) 见仓库根目录。双击 `gomoku.html` 即可游玩
 > （`file://` 下可用）。引擎为纯逻辑层（无 DOM），浏览器与 Node 双跑。完整技术规格见
-> [`docs/design.md`](docs/design.md) (v3.41)，工程里程碑与基准见 [`docs/optimization-plan.md`](docs/optimization-plan.md)。
+> [`docs/design.md`](docs/design.md) (v3.41)。
 >
 > **English abstract:** Pure-frontend, dependency-free Gomoku AI. Double-click `gomoku.html`
 > to play (works under `file://`). The engine is plain logic (no DOM), runs in both the
-> browser and Node. See `docs/design.md` for the full technical spec (v3.41) and
-> `docs/optimization-plan.md` for milestones & benchmarks.
+> browser and Node. See [`docs/design.md`](docs/design.md) for the full technical spec (v3.41).
 
 ---
 
@@ -71,9 +70,8 @@ gomoku-ai/
 ├── ui/                   # UI layer (render / interaction / kifu panel / hints / touch)
 ├── test/                 # Unit tests (node:test, 309 cases total)
 ├── tools/                # Build / benchmark / generate / verify tools
-├── docs/                 # Design docs and optimization plan
-│   ├── design.md         # Full technical design (v3.41)
-│   └── optimization-plan.md  # Engineering milestones & benchmarks (v1.4)
+├── docs/                 # Design docs
+│   └── design.md         # Full technical design (v3.41)
 └── assets/               # Screenshots
 ```
 
@@ -86,13 +84,13 @@ gomoku-ai/
 - **Evaluation**: §4 (shape scoring tables, side-to-move and reference frame, forbidden points as score penalties rather than hard bans).
 - **Rules**: §7 (forbidden-free / forbidden-point split), §8 (forbidden-point detection, five-in-a-row priority).
 - **Opening book**: §12 (26 openings + prefix-match tree); **VCF/VCT**: §6; **Worker protocol**: §28.
-- **Full spec**: [`docs/design.md`](docs/design.md) (v3.41); **engineering milestones / benchmarks / honest conclusions**: [`docs/optimization-plan.md`](docs/optimization-plan.md).
+- **Full spec**: [`docs/design.md`](docs/design.md) (v3.41).
 
 ---
 
 ## Honesty Notes on Strength & Difficulty
 
-This project follows a **measure-don't-claim** principle for "strength gains": every enhancement is validated by self-play **Elo + 95% confidence interval**; when the CI contains 0, no strength gain is claimed. For example, VCF/VCT reduces mate-delay by more than 10× with no visible improvement in detection rate, while a 30-game self-play Elo was +11.6 (CI [−112.8, +136.0]) — so no strength gain is claimed. See `docs/optimization-plan.md` §17.2.
+This project follows a **measure-don't-claim** principle for "strength gains": every enhancement is validated by self-play **Elo + 95% confidence interval**; when the CI contains 0, no strength gain is claimed. For example, VCF/VCT reduces mate-delay by more than 10× with no visible improvement in detection rate, while a 30-game self-play Elo was +11.6 (CI [−112.8, +136.0]) — so no strength gain is claimed.
 
 ---
 
@@ -116,5 +114,3 @@ This project follows a **measure-don't-claim** principle for "strength gains": e
 - Bitboard (M3c, candidate)
 - Difficulty DIFFICULTY recalibration (M9, candidate)
 - Real Renju problem set integration (replacing the constructed puzzles, format unchanged)
-
-See the "Optional Follow-ups" section of `docs/optimization-plan.md`.

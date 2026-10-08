@@ -11,14 +11,13 @@
   const { N, NN, EMPTY, BLACK, WHITE, DIRS, idxOf, inBoard, opp } = core;
   const DEFAULT = { rule: 'freestyle', overlineMode: 'rif', lambda: 0.9, wldFast: false, candBit: false };
 
-  // ★ 排序层禁手降幅（§13 ⑤(e) 方案 C，2026-09-20，#33）
-  //   `PAT.FORBIDDEN`（−1e9）是 `levelScore` 的公开契约（`patterns.test.js:44-46` 依赖），
-  //   故**不改** `levelScore` 的返回值；只在**排序分** `atk` 项把它缩到 −1e5。
-  //   理由：−1e9 与"活四"(1e6) 差 1e15（同尺度断层），会让深搜为了躲一个远期禁手
-  //   而弃掉眼前的胜势着法。缩到 −1e5 后：
-  //     · 仍严格低于所有合法着法的最小分（实测 −9.5，`_probe-planC22.js`）；
+  // ★ 排序层禁手降幅：FORBIDDEN(−1e9) 与"活四"(1e6) 差 1e15（同尺度断层），
+  //   会让深搜为躲一个**远期**禁手而弃掉眼前的胜势着法。
+  //   `PAT.FORBIDDEN` 是 `levelScore` 的公开契约（`patterns.test.js` 依赖），
+  //   故**不改** levelScore 的返回值；只在**排序分** `atk` 项把它缩到 −1e5：
+  //     · 仍严格低于所有合法着法的最小分（实测最小分 −9.5）；
   //     · 与"活四"(1e6) 比 10 倍（与出厂"双四/活四"的 8.3 倍同量级）。
-  //   **不改** `eval.js` 第 62-64 行"对手禁手点威胁归零"（§7.3 有意设计，逼禁之源）。
+  //   **不改**下方"对手禁手点威胁归零"（有意设计，逼禁之源）。
   const FORBID_SORT = PAT.FORBIDDEN * 1e-4;   // = −1e5
 
   // 候选点：距已有棋子 <= radius 的空点；空盘返回天元
@@ -37,11 +36,49 @@
   const _mark = new Int32Array(NN);
   let _gen = 0;
   const _candBM = new Uint32Array(8);               // A9：225 bit 位图（8×32=256 ≥ 225）
-  function candidatesSlow(board, radius) {          // 旧路径（保留：对拍基线 + 默认关时使用）
-    const r = radius === undefined ? 2 : radius;
-    const out = [];
+
+  /* ---------- 候选收集：单一实现，两种消费方式（评审重构） ----------
+   * collect(board, r, useBit, out) 把候选**写进调用方给的缓冲**并返回个数。
+   * 慢速版用代数戳（_mark），位图版用 8×word 位图并跳零 word（§4.10）。
+   * 两者**逐位同序**（位图按 word 升序、word 内 bit 升序 ⇒ 等同 i 升序）——这是调用方依赖的契约。
+   *
+   * ★ 为什么合并：candidatesSlow / candidatesBit / candidatesInto 原本是**三份**几乎相同的
+   *   邻域扫描代码（评审新增零分配枚举时才暴露）。三份各自演化 ⇒ 迟早漂移。
+   *   现统一到本函数：数组 API（candidates/candidatesSlow/candidatesBit）只是"收集+拷贝"，
+   *   热路径（candidatesInto）直接读缓冲、零分配。
+   */
+  function collect(board, r, useBit, out) {
     if (_gen > 1e9) { _mark.fill(0); _gen = 0; }
     const g = ++_gen;
+    if (useBit) {
+      const bm = _candBM;
+      bm[0] = bm[1] = bm[2] = bm[3] = bm[4] = bm[5] = bm[6] = bm[7] = 0;
+      for (let i = 0; i < NN; i++) {
+        if (board[i] === EMPTY) continue;
+        const x = i % N, y = (i / N) | 0;
+        for (let dy = -r; dy <= r; dy++) {
+          const ny = y + dy; if (ny < 0 || ny >= N) continue;
+          const row = ny * N;
+          for (let dx = -r; dx <= r; dx++) {
+            const nx = x + dx; if (nx < 0 || nx >= N) continue;
+            const j = row + nx;
+            if (board[j] === EMPTY) bm[j >> 5] |= (1 << (j & 31));
+          }
+        }
+      }
+      let n = 0;
+      for (let w = 0; w < 8; w++) {
+        let bits = bm[w];
+        if (!bits) continue;                          // 跳过全零 word（A9 的主要收益点）
+        const base = w << 5;
+        while (bits) {
+          const low = bits & -bits;                   // 取最低位
+          out[n++] = base + (31 - Math.clz32(low));
+          bits ^= low;
+        }
+      }
+      return n;
+    }
     for (let i = 0; i < NN; i++) {
       if (board[i] === EMPTY) continue;
       const x = i % N, y = (i / N) | 0;
@@ -55,39 +92,27 @@
         }
       }
     }
-    for (let i = 0; i < NN; i++) if (_mark[i] === g) out.push(i);
-    if (!out.length) return [idxOf(7, 7)];      // 空盘
+    let n = 0;
+    for (let i = 0; i < NN; i++) if (_mark[i] === g) out[n++] = i;
+    return n;
+  }
+  const _candBuf = new Int32Array(NN);              // 零分配枚举的复用缓冲
+  let _candLen = 0;
+
+  function candidatesSlow(board, radius) {          // 旧路径（对拍基线 + 默认关时使用）
+    const r = radius === undefined ? 2 : radius;
+    const n = collect(board, r, false, _candBuf);
+    if (!n) return [idxOf(7, 7)];                    // 空盘
+    const out = new Array(n);
+    for (let k = 0; k < n; k++) out[k] = _candBuf[k];
     return out;
   }
   function candidatesBit(board, radius) {           // A9：位图收集版（同序）
     const r = radius === undefined ? 2 : radius;
-    const bm = _candBM;
-    bm[0] = bm[1] = bm[2] = bm[3] = bm[4] = bm[5] = bm[6] = bm[7] = 0;
-    for (let i = 0; i < NN; i++) {
-      if (board[i] === EMPTY) continue;
-      const x = i % N, y = (i / N) | 0;
-      for (let dy = -r; dy <= r; dy++) {
-        const ny = y + dy; if (ny < 0 || ny >= N) continue;
-        const row = ny * N;
-        for (let dx = -r; dx <= r; dx++) {
-          const nx = x + dx; if (nx < 0 || nx >= N) continue;
-          const j = row + nx;
-          if (board[j] === EMPTY) bm[j >> 5] |= (1 << (j & 31));
-        }
-      }
-    }
-    const out = [];
-    for (let w = 0; w < 8; w++) {
-      let bits = bm[w];
-      if (!bits) continue;                          // 跳过全零 word（A9 的主要收益点）
-      const base = w << 5;
-      while (bits) {
-        const b = bits & -bits;                     // 取最低位
-        out.push(base + (31 - Math.clz32(b)));
-        bits ^= b;
-      }
-    }
-    if (!out.length) return [idxOf(7, 7)];      // 空盘
+    const n = collect(board, r, true, _candBuf);
+    if (!n) return [idxOf(7, 7)];
+    const out = new Array(n);
+    for (let k = 0; k < n; k++) out[k] = _candBuf[k];
     return out;
   }
   // 门控：`_candBit` 由 `sortedMoves` 依 `cfg.candBit` 设置（默认关 ⇒ 走旧路径，逐位不变）
@@ -103,13 +128,34 @@
   }
   function candStat() { return { slow: _csSlow, bit: _csBit, on: _candBit }; }
 
+  /* ---------- 零分配候选枚举（评审新增） ----------
+   * candidates() 每调用都 new 一个 60~180 元素数组；search 热路径
+   * (quiesce/genMoves/winningPoints) 每节点都调 ⇒ profile ~9% + GC 压力。
+   * 本迭代器把候选留在复用缓冲里，调用方只读不存（热路径不再每节点分配）。
+   * ★ 契约：① 返回**共享缓冲**，下次调用即覆写 ⇒ 不得长期持有、不得跨调用比较；
+   *   ② 迭代期间不得再调用本函数（内层会冲掉外层缓冲）。
+   * ★ A9 门控：必须与 candidates() 同门控、同计数，否则 test/cand-bit ⑧
+   *   （"两版调用次数必须相同" = 搜索树未被改变的护栏）会失效。
+   */
+  function candidatesInto(board, radius) {
+    const r = radius === undefined ? 2 : radius;
+    if (_candBit) _csBit++; else _csSlow++;
+    let n = collect(board, r, _candBit, _candBuf);
+    if (!n) { _candBuf[0] = idxOf(7, 7); n = 1; }    // 空盘：天元（与 candidates() 同）
+    _candLen = n;
+    return n;
+  }
+  /** 取第 k 个候选（仅在 candidatesInto 之后、未再调用前有效）。 */
+  function candAt(k) { return _candBuf[k]; }
+  function candCount() { return _candLen; }
+
   // 着法级评分（§4.4）：attack + λ·defend + 中心微调。**仅排序用**
   // out（可选）会被写入 { level, forbid }，供调用方复用同一次定级（避免重复计算）
   //
-  // ★ 禁手判定口径（2026-09-20，#33）：`out.forbid` **必须**取自严格判定
+  // ★ 禁手判定口径：`out.forbid` **必须**取自严格判定
   //   （`forbiddenAt`，§26），**不能**再从 `la` 是否等于 DOUBLE_*/OVERLINE 推断
   //   ——`levelAt` 的 `decideOf` 会用**窗口**计数给出 DOUBLE_THREE/DOUBLE_FOUR，
-  //   而窗口口径与严格口径在 ≈0.01% 的点上不一致（`_probe-planC16.js` 假阳），
+  //   而窗口口径与严格口径在 ≈0.01% 的点上不一致（假阳），
   //   会把合法着法误标为禁手、进而被排序踢到最后（拒绝走好着）。
   function moveScoreAt(board, i, player, cfg, out) {
     const c = cfg || DEFAULT;
@@ -188,8 +234,16 @@
 
   /* ---------- 增量叶子评估（§33.3，O(1) 摊还） ---------- */
   // 取分系数预计算：singleScore 对计数是线性的 ⇒ 叶子只需点积
+  //
+  // ★ 评审修复：COEF 曾是**无失效机制**的永久缓存，而 singleScore 含调参钩子
+  //   ⇒ setTune 后本表仍是旧系数，staticEvalPos（搜索热路径）无视调参，
+  //   与全量 staticEval 分叉（tools/bench-tune.js 的旋钮因此对搜索完全无效）。
+  //   修法：把 patterns 的调参代际 tuneGen() 纳入判断，代际变了就整表重建。
   const COEF = new Map();
+  let COEF_GEN = -1;
   function coeffOf(rule, role, rel) {
+    const gen = PAT.tuneGen();
+    if (gen !== COEF_GEN) { COEF.clear(); COEF_GEN = gen; }   // 调参代际变化 ⇒ 整表失效
     const k = rule + '|' + role + '|' + rel;
     let c = COEF.get(k);
     if (!c) {
@@ -231,5 +285,6 @@
   }
 
   return { DEFAULT, candidates, candidatesSlow, candidatesBit, setCandBit, candStat,
+           candidatesInto, candAt, candCount,
            evaluateMove, moveScoreAt, sortedMoves, staticEval, staticEvalPos };
 });

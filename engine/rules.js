@@ -18,7 +18,8 @@
   else { root.G = root.G || {}; root.G.rules = factory(root.G.core, root.G.patterns); }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (core, PAT) {
   'use strict';
-  const { N, EMPTY, BLACK, WHITE, DIRS, idxOf, inBoard } = core;
+  const { N, NN, EMPTY, BLACK, WHITE, DIRS, idxOf, inBoard } = core;
+  const W9 = PAT.W9;              // (idx,dir)→9 窗口格点表（复用 patterns 的预计算，见 isWinAt）
 
   const WIN = 'win', LOSE = 'lose', NONE = 'none';
   const DEFAULT_OVERLINE = 'rif';
@@ -126,9 +127,39 @@
   };
   function get(rule) { return RULES[rule] || RULES.freestyle; }
 
+  /* 索引版胜负判定：与 isWin(x,y,…) 逐位等价，且不改写棋盘
+   * （原实现每候选 board[i]=p/=EMPTY 往返，绕过 §33.3 的 onCell 钩子）。
+   * freestyle/白棋只需知"某方向>=5"，W9（半径 4）足够 ⇒ 纯索引；
+   * Renju-黑须区分"恰好五"与长连，W9 看不到第 5 邻居 ⇒ 交回坐标版严格实现。
+   * ⚠ 曾加"两侧各数 2 格"前置筛选，实测更慢(4197→5904ns)且漏判 3+1 分布，勿重走。 */
+  function isWinAt(board, idx, player, rule, overlineMode) {
+    if (rule === 'renju' && player === BLACK) {
+      const x = idx % N, y = (idx / N) | 0;
+      return overlineMode === 'strict'
+        ? (maxRun(board, x, y, BLACK) < 6 && countExactFives(board, x, y, BLACK) > 0)
+        : countExactFives(board, x, y, BLACK) > 0;
+    }
+    for (let d = 0; d < 4; d++) {
+      const b = (idx * 4 + d) * 9;
+      if (1 + runSide(board, b, 5, +1, player) + runSide(board, b, 3, -1, player) >= 5) return true;
+    }
+    return false;
+  }
+  /* 从 W9 某端沿 step 向内数同色子（半径 4 ⇒ 最多 4 个）。
+   * from=5/step=+1 ⇒ +d；from=3/step=−1 ⇒ −d（k=p−4，中心 p=4）。 */
+  function runSide(board, base, from, step, player) {
+    let n = 0;
+    for (let k = 0; k < 4; k++) {
+      const c = W9[base + from + step * k];
+      if (c < 0 || board[c] !== player) break;
+      n++;
+    }
+    return n;
+  }
+
   return {
     WIN, LOSE, NONE, RULES, get,
     runLength, maxRun, countExactFives,
-    isWin, judge, isForbidden, winningLine,
+    isWin, isWinAt, judge, isForbidden, winningLine,
   };
 });

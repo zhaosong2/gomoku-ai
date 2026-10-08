@@ -25,29 +25,28 @@
   const MATE = PAT.WIN - 1000;          // 杀分阈值
   const TIMEOUT = { timeout: true };    // 超时哨兵
 
-  /* ★ M7 启发式按位开关（§17.4 调参 / §17.2 A/B 对比用；模块级变量，热路径零开销）
+  /* ★ 启发式按位开关（模块级变量，热路径零开销）
    * 注意：TT 标志位修正、TT 着法 key 校验、代龄与规则盐属于**正确性修复**，不受开关控制。
    */
-  const H_LMRF = 1;    // LMR 用 §24.2 规格公式（替代旧的奇偶 hack）
+  const H_LMRF = 1;    // LMR 用规格公式（替代旧的奇偶 hack）
   const H_KILL2 = 2;   // 次级 killer 槽
   const H_IID = 4;     // 内部迭代加深
   const H_ROOT = 8;    // 根层存 TT + 复用上一轮最佳着法
   const H_LMRR = 16;   // 削减后若 v>α，再全深零窗重搜（更准但更贵）
   const H_MALUS = 32;  // history malus：未剪枝的安静着法扣分
-  // ★ A2+A4 收官（2026-09-20）：RAZOR/MCUT/VERIFY 并入 H_ALL（63→703→2751）；
-  //   VDP（本引擎 PVS 窗口下无触发场景，杀题 nodes 0.0%）/FUTILE（实战快验 −134 Elo，depth 回落）
-  //   **弃用留档**——位常量保留，可用 cfg.h 手动开启复盘。回滚 = cfg.h 传 63（旧默认）。
-  const H_VDP    = 64;   // A2a victory distance pruning：杀分窗口外直接返回（纯正确性剪枝）
-  const H_RAZOR  = 128;  // A2b razoring：浅层静态分过低时先试 quiesce（✓ 并入：节点 −44.2%，Elo CI 含 0）
-  const H_FUTILE = 256;  // A2c extended futility：浅层劣势节点只搜威胁着法（✗ 弃：节点 −62% 但实战 −134 Elo）
-  const H_MCUT   = 512;  // A2d 着法数裁剪：深层且前若干着全差时砍尾部（✓ 并入：节点 −30.9%，depth 持平，Elo CI 含 0）
-  const H_VERIFY = 2048; // A4 取胜线复核：PV 节点胜分窄窗验证，fail-low 再全窗 cautious 重搜（§4.4）
-  const H_LEAFVCF = 1024; // A3 叶节点 VCF：depth<=0 时先试 VCF 再 quiesce（§4.3；须 cfg.leafVcfDepth>0）
+  // ↓ VDP/FUTILE 默认关（位常量留档，可用 cfg.h 开启复盘）：
+  //   VDP 本引擎 PVS 窗口下无触发场景；FUTILE 节点 −62% 但实战 −134 Elo（剪过强伤棋力）。
+  const H_VDP    = 64;   // victory distance pruning：杀分窗口外直接返回
+  const H_RAZOR  = 128;  // razoring：浅层静态分过低时先试 quiesce（已并入）
+  const H_FUTILE = 256;  // extended futility：浅层劣势节点只搜威胁着法（弃用）
+  const H_MCUT   = 512;  // 着法数裁剪：深层且前若干着全差时砍尾部（已并入）
+  const H_VERIFY = 2048; // 取胜线复核：PV 节点胜分窄窗验证，fail-low 再全窗 cautious 重搜
+  const H_LEAFVCF = 1024; // 叶节点 VCF：depth<=0 时先试 VCF 再 quiesce（须 cfg.leafVcfDepth>0）
   const H_ALL = H_LMRF | H_KILL2 | H_IID | H_ROOT | H_LMRR | H_MALUS | H_RAZOR | H_MCUT | H_VERIFY;
 
-  // ★ A4 复核触发计数（只读验收用）：触发数 / 总节点应 <1%（§4.4 门槛）
+  // A4 复核触发计数（只读验收）：触发数 / 总节点应 <1%
   let verifyCount = 0;
-  // ★ A3 叶 VCF 计数（只读验收用）：命中率 = hits/calls，<2% 则应关掉（§4.3 成本护栏）
+  // A3 叶 VCF 计数（只读验收）：命中率 = hits/calls，<2% 则应关掉
   let leafVcfCalls = 0;
   let leafVcfHits = 0;
   let H = H_ALL;
@@ -249,10 +248,11 @@
     // 注意：对方若是黑棋（Renju），其禁手点不是成五点（不能靠"成五"取胜）→ 交给 winngPoints 过滤
     const mustBlock = winningPoints(board, o, PAT.forbidMode(o, cfg.rule, cfg.overlineMode), cfg.rule);
     const blockSet = mustBlock.length ? new Set(mustBlock) : null;
-    const cand = EV.candidates(board, cfg.radius);
+    // 零分配枚举（评审）：下方循环体只调 moveScoreAt/levelAt，均不触碰候选缓冲 ⇒ 契约安全
+    const ncand = EV.candidatesInto(board, cfg.radius);
     const list = [];
-    for (let k = 0; k < cand.length; k++) {
-      const i = cand[k], x = i % N, y = (i / N) | 0;
+    for (let k = 0; k < ncand; k++) {
+      const i = EV.candAt(k), x = i % N, y = (i / N) | 0;
       // ★ 排序主键 = attack + λ·defend（§4.4）；TT/killer/history 只做小幅加权，
       //   绝不允许把防守分值压成噪声（否则丢关键防点 → 假必败）
       // 同一次调用内复用定级结果（level / forbid），避免重复 classify
@@ -336,11 +336,14 @@
     if (stand >= beta) return stand;
     if (stand > alpha) alpha = stand;
     const list = [];
-    for (const i of EV.candidates(board, cfg.radius)) {
+    // 零分配枚举（评审）：本节点只用一次且遍历期间不再调 candidates* ⇒ 满足共享缓冲契约
+    const nq = EV.candidatesInto(board, cfg.radius);
+    for (let q = 0; q < nq; q++) {
+      const i = EV.candAt(q);
       const lv = PAT.levelAt(board, i, stm, mS);
       // 禁手着法不进静态搜索（Renju 黑；freestyle 下长连是胜，必须保留）
       // ★ 用严格判定（forbiddenAt）而非 lv：`lv === DOUBLE_*` 是**窗口**口径，
-      //   与严格口径在 ≈0.01% 的点上不一致（2026-09-20 #33 修正）。
+      //   与严格口径在 ≈0.01% 的点上不一致。
       if (mS > 0 && PAT.forbiddenAt(board, i, mS)) continue;
       if (lv >= PAT.L.FOUR) list.push({ i: i, x: i % N, y: (i / N) | 0, s: PAT.LEVEL_M[lv] });
     }
@@ -389,8 +392,8 @@
           });
           if (w) {
             leafVcfHits++;
-            // ★ 2026-09-20 裁决（#34，施工图 A3 缺陷）：**不用施工图伪码的 `PAT.WIN-1000-ply`**。
-            //   该口径 = MATE − ply < MATE，会同时破坏三处杀分语义：
+            // ★ 杀分口径：必须用 `PAT.WIN - ply`，不可用 `MATE - ply`（= PAT.WIN-1000-ply）。
+            //   后者 < MATE，会同时破坏三处杀分语义：
             //     ① `think()` 的 `bestV >= MATE` 见杀早停判不出（迭代加深白跑更贵的层）；
             //     ② `toTT/fromTT` 的 `v >= MATE` 分支不命中 ⇒ TT 里不带杀语义（ply 补偿丢失）；
             //     ③ `bench-mates`/分析侧 `|score| >= 99999000` 判据漏判（实测把已解出的题判为未解）。
@@ -404,7 +407,7 @@
 
     // ★ A2b razoring（§4.2，PentaZen :444-446）：非 PV 浅节点、静态分远低于 alpha ⇒
     //   先跑 quiesce 试探；连静态搜索都够不到 alpha ⇒ 返回 q（fail-low）。
-    //   ⚠ 2026-09-20 实测修正：规格字面 `return se`（裸静态分）在本引擎产生**方向性乐观偏差**
+    //   ⚠ 实测修正：规格字面 `return se`（裸静态分）在本引擎产生**方向性乐观偏差**
     //   （40 中局 diff 40/40，劣势局被系统性抬高，如 −606→−411、−40→+392）——五子棋 quiesce
     //   与 se 的战术差距远大于国象。q 已算出、零额外成本且严格更准 ⇒ 返回 q。
     //   ⚠ 仍属估值口径 ⇒ 不写 TT（避免 ply 补偿污染，§4.2 契约）。
@@ -437,9 +440,8 @@
 
     // ★ A2c extended futility（§4.2，PentaZen :448-450）：非 PV 浅节点、静态分已远低于 alpha ⇒
     //   非威胁着法不可能把分数拉回 alpha，跳过（continue，非 return）。
-    //   forcing 谓词**零成本复用 genMoves 已算好的 m.forcing**（=落子成 ≥ 冲四等级，:245）——
-    //   施工图方案 A（moveScoreAt≥活三分）反而多算一次；语义对齐"威胁着法"，比"≥活三"略严（多剪），
-    //   若题库退化再放宽。se 惰性计算：仅位开且条件可能成立时才算。
+    //   forcing 谓词**零成本复用 genMoves 已算好的 m.forcing**（=落子成 ≥ 冲四等级，:245）；
+    //   语义对齐"威胁着法"，比"≥活三"略严（多剪），若题库退化再放宽。se 惰性计算：仅位开且条件可能成立时才算。
     const futActive = (H & H_FUTILE) && depth <= 3 && beta - alpha <= 1;
     const seFut = futActive ? EV.staticEvalPos(pos, cfg) : 0;
 
@@ -465,10 +467,10 @@
         // ★ A4 取胜线复核（§4.4，PentaZen :520-527 原义适配；此处仍在 makeMove 状态中）：
         //   PV 节点搜出 ≥MATE 的着法（排除本手直接成五——那是规则级事实无需验证）→
         //   先窄窗 (−MATE, −MATE+1) 试探对方能否反驳；fail-low 再全窗 cautious 重搜拿权威值。
-        //   ⚠ 对施工图伪码的三处偏差（均对齐 PentaZen 原义，2026-09-20 裁决）：
-        //   ①per-move 落点（伪码的 rootSearch 落点 + ply>=1 在彼处恒 false = 死代码，施工图缺陷⑤）；
-        //   ②双层：单层会把窄窗边界毛刺（MATE−1）误当真实值降级真胜线；
-        //   ③cautious = 重搜期间清 H_MCUT（对齐 PentaZen :472 move-count 豁免——A4 是 A2d 的兜底）
+        //   ⚠ 与 PentaZen 原义对齐的三处偏差：
+        //   ① per-move 落点（若放 rootSearch 则 ply>=1 恒 false = 死代码）；
+        //   ② 双层：单层会把窄窗边界毛刺（MATE−1）误当真实值，降级真胜线；
+        //   ③ cautious = 重搜期间清 H_MCUT（A4 是 A2d 的兜底）
         //     且清 H_VERIFY（防嵌套递归）。TT 污染不在防御范围（同 TT 复核被 ttProbe 短路）。
         if ((H & H_VERIFY) && beta - alpha > 1 && ply >= 1 && v >= MATE && v < PAT.WIN - ply) {
           verifyCount++;
@@ -554,7 +556,7 @@
     }
     for (const i of EV.candidates(b, cfg.radius)) {
       const lv = PAT.levelAt(b, i, stm, mS);
-      // ★ 严格判定（2026-09-20 #33）：不再从 lv === DOUBLE_* 推断禁手（窗口口径会假阳）
+      // ★ 严格判定：不再从 lv === DOUBLE_* 推断禁手（窗口口径会假阳）
       if (mS > 0 && PAT.forbiddenAt(b, i, mS)) continue;
       if (lv >= PAT.L.OPEN_FOUR) return { x: i % N, y: (i / N) | 0 };
     }
@@ -565,7 +567,7 @@
   /* ---------- 威胁搜索：VCF → VCT（§25.4） ---------- */
   function threatSolve(pos, cfg, t0, tactBudget) {
     const stm = pos.stm;
-    // ★ A1-a（施工图 §4.1）：威胁搜索拿 think() 切好的独立预算 tactBudget，不再直接吃 hardLimit
+    // ★ 预算切分：威胁搜索拿 think() 切好的独立预算 tactBudget，不再直接吃 hardLimit
     //   （否则战术超支会侵占主搜索份额）。不传第 4 参时保持旧行为（兼容直接调用方）。
     const share = Number.isFinite(tactBudget) ? Math.min(cfg.threatMs, tactBudget)
                                               : Math.min(cfg.threatMs, Math.max(50, cfg.hardLimit));
@@ -663,7 +665,7 @@
     const cfg = resolveCfg(cfgIn);
     H = cfg.h === undefined ? H_ALL : (cfg.h | 0);          // ★ M7 启发式按位开关
     const t0 = Date.now();
-    // ★ A1-a（施工图 §4.1）：预算切分——战术（VCF/VCT）拿独立份额 tactBudget，
+    // ★ 预算切分：预算切分——战术（VCF/VCT）拿独立份额 tactBudget，
     //   主搜索拿剩余 budgetMax，互相不得侵占。总闸 deadline 保留给兜底判定（不变）。
     const HARD = Math.max(1, cfg.hardLimit);
     const TACT_RATIO = Number.isFinite(cfg.tacticalRatio) ? cfg.tacticalRatio : 0.35;
@@ -693,8 +695,8 @@
                              depth: bk.depth, cands: bk.cands, games: bk.games,
                              rate: bk.rate, score: bk.score } };
 
-    // ★ A1-a：战术段计时 → 主搜索拿剩余份额。
-    //   ⚠ 施工图伪码写 mainDeadline = t0 + budgetMax，会把战术耗时扣两次
+    // ★ 战术段计时 → 主搜索拿剩余份额。
+    //   ⚠ 不可写 mainDeadline = t0 + budgetMax，会把战术耗时扣两次
     //   （主搜索实际只剩 HARD−2·tactUsed）——正确基准是主搜索起点 mainStart。
     const tactT0 = Date.now();
     const w = threatSolve(pos, cfg, tactT0, tactBudget);    // §25.4 VCF → VCT（独立预算）
@@ -714,21 +716,13 @@
     let best = { x: root0[0].x, y: root0[0].y }, bestV = -INF, reached = 0;
 
     let rootIdx = -1;                                       // 上一轮最佳着法（供下一轮排序）
-    // ★ A1-b（施工图 §4.1）：预测式停止——下一层预计耗时 BUDGET_K×lastTd 会撞主闸就不开这层。
-    //   Carbon A7 / Stahlfaust A7 / PentaZen A1 三方共识。
-    //   ⚠⚠ 2026-09-20 会话 8 **整体回滚为默认关**（BUDGET_K 默认 0 = 永不预测停止）——实测证据：
-    //     · normal/hard 档搜索**远早于时限完成**（58/284ms vs 1000/2000ms，时限富余 10~17×，
-    //       stopped 0/12）⇒ **A1 无作用对象**（它优化"时限用尽时怎么分配"，而这些档位用不到时限）；
-    //     · master 档时限利用率 96.3% 本就无浪费，A1 只降深度：K 扫描 K=0 深度 9.75 →
-    //       K=1 9.00 → K=4 8.25 → K=8 7.75，**无任何 K 能追平 K=0**。
-    //     · 动机依据 P-B"68.4% 浪费"失真：`tools/_probe-lastlayer.js` 默认 `--ms=100`，
-    //       用 `difficulty:'hard'` + 显式覆盖 hardLimit=100 ⇒ 该"浪费"只在人为压缩时限时成立。
-    //   ⇒ 机制代码保留在 cfg 通道内（可复现/将来档位变化后重评），默认值 = 旧行为。
-    //     · 旧行为回滚（施工图原写 Infinity 是错的：now+∞ 恒撞闸 ⇒ d=4 即激进停摆）。
+    // 预测式停止：下一层预计耗时 BUDGET_K×lastTd 会撞主闸就不开这层（Carbon/Stahlfaust/PentaZen 共识）。
+    // ★ 默认 BUDGET_K=0 = 永不预测停止：实测 normal/hard 档远早于时限完成（时限富余 10~17×），
+    //   master 档时限利用率本就 96.3% 无浪费、任何 K 都只降深度追不平 K=0 ⇒ 此机制无作用对象。
+    //   代码保留在 cfg 通道内可复现，档位变化后可重评。
     const BUDGET_K = Number.isFinite(cfg.layerFactor) ? cfg.layerFactor : 0;
-    // ★ A1-c（施工图 §4.1）：稳定性收缩 + 提前终止。——同上整体回滚为默认关（STAB=1.0 / STOP_EARLY=1.0）。
-    //   ⚠ 收缩后 mainDeadline 基准必须仍是 mainStart（施工图伪码写 t0 + budgetMax，
-    //   与 A1-a 同一双重扣减问题：会把战术+已耗时间再扣一遍）。
+    // 稳定性收缩 + 提前终止：同上默认关（STAB/STOP_EARLY = 1.0 = 原行为）。
+    // ⚠ 收缩后 mainDeadline 基准必须仍是 mainStart 而非 t0，否则会把战术段耗时再扣一遍。
     const STAB = Number.isFinite(cfg.stabilFactor) ? cfg.stabilFactor : 1.0;
     const STOP_EARLY = Number.isFinite(cfg.stopEarly) ? cfg.stopEarly : 1.0;
     let lastBestI = -1;

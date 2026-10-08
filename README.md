@@ -31,6 +31,8 @@
 
 ## 快速开始 (Quick Start)
 
+**在线试玩**：<https://gomoku-ai-02487.app.workbuddy.host/>
+
 | 目的 | 操作 |
 | --- | --- |
 | **直接玩** | 用浏览器打开 [`gomoku.html`](gomoku.html)（双击即可，零依赖） |
@@ -66,7 +68,7 @@ gomoku-ai/
 │   ├── worker-src.js     # ★ 自动生成：Worker 打包源码（请勿手工编辑）
 │   └── data/             # 开局库 / 杀题库 / 26 开局定义
 ├── ui/                   # 界面层（渲染 / 交互 / 棋谱面板 / 提示 / 触屏）
-├── test/                 # 单元测试（node:test，共 309 项）
+├── test/                 # 单元测试（node:test，共 316 项）
 ├── tools/                # 构建 / 基准 / 生成 / 验证工具
 ├── docs/                 # 设计文档
 │   └── design.md         # 完整技术设计（v3.41）

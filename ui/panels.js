@@ -295,7 +295,7 @@
         rule: g.rule, overlineMode: g.overlineMode,
         // ★ 热力图本应按**当前难度**取值（§13 难度标定工具要量测"该档位玩家实际看到的
         //   强弱提示"）。此前漏传 difficulty → ai.js 落到 normal 默认值，热力图与所选
-        //   难度脱钩（2026-09-19 M9 修正）。
+        //   难度脱钩。
         difficulty: g.difficulty, depth: g.depth,
       })
         .then(function (res) {
@@ -322,7 +322,7 @@
 
     /* ---------- 事件 ---------- */
     /* ★ 这里**不**再给 btnHint / btnJudge / btnHeat 绑 click。
-     *   历史缺陷（2026-09-23 评审）：本模块与 `ui/main.js` 各绑了一个 click 监听 ⇒
+     *   历史缺陷：本模块与 `ui/main.js` 各绑了一个 click 监听 ⇒
      *   一次点击触发**两次** toggle。对「热力」是致命的：panels 先开 → main 紧接着又关，
      *   最终 heatOn 仍为 false，「热力图」按钮**怎么点都打不开**、还顺手把 prefs 写成 false。
      *   更隐蔽的是断言全绿：`heat === cls && pressed===cls` 这类"三者一致"的断言在

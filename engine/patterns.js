@@ -47,14 +47,19 @@
    *   OPEN_FOUR > DOUBLE_THREE(组合 L 级，由 LEVEL_M 保证)。
    */
   const TUNE = { m: null, t: null, level: null };
+  // ★ 代际计数：setTune/resetTune 每次变更自增，供下游派生缓存判断是否陈旧。
+  //   起因：eval.coeffOf 曾是永久缓存而 singleScore 含调参钩子 ⇒ 调参后
+  //   staticEvalPos（搜索热路径）无视 setTune，与 staticEval 行为分叉。
+  let TUNE_GEN = 0;
   function setTune(patch) {
     const p = patch || {};
     TUNE.m = p.singleM ? Object.assign({}, SINGLE_M, p.singleM) : null;
     TUNE.t = p.singleT ? Object.assign({}, SINGLE_T, p.singleT) : null;
     TUNE.level = p.levelM ? Object.assign({}, LEVEL_M, p.levelM) : null;
+    TUNE_GEN++;
   }
-  function resetTune() { TUNE.m = null; TUNE.t = null; TUNE.level = null; }
-  function tuneState() { return { singleM: TUNE.m, singleT: TUNE.t, levelM: TUNE.level }; }
+  function resetTune() { TUNE.m = null; TUNE.t = null; TUNE.level = null; TUNE_GEN++; }
+  function tuneState() { return { singleM: TUNE.m, singleT: TUNE.t, levelM: TUNE.level, gen: TUNE_GEN }; }
   const Mof = p => (TUNE.m && TUNE.m[p] !== undefined) ? TUNE.m[p] : SINGLE_M[p];
   const Tof = p => (TUNE.t && TUNE.t[p] !== undefined) ? TUNE.t[p] : SINGLE_T[p];
   const Lof = l => (TUNE.level && TUNE.level[l] !== undefined) ? TUNE.level[l] : LEVEL_M[l];
@@ -241,19 +246,15 @@
     return out;
   }
   /* ---------- 严格禁手判定（§26，仅 Renju 黑棋）----------
-   * ★ 关于"廉价预检"的重要更正（2026-09-20，#33）：
-   *   原注释称"窗口模型判三/四只会多判不会漏判，可用作廉价预检"——**这是错的**。
-   *   实测（`_probe-planC4.js`）：`forbiddenAt` 判定的禁手点里 **≈20~24%** 被
-   *   `levelAt` 的旧预检判成**合法等级并给正分**（"双活三→四三"、"长连→连五(+1e8)"等）。
-   *   根因（`_probe-planC12.js`）：窗口模型 `classifyIdx` **每方向只报一个最强型**，
-   *   而严格判定 `isFourDir`/`isOpenThreeDir` **逐方向独立计数**。当**同一方向严格
-   *   同时是"四"与"活三"**时，窗口只报"冲四"⇒ 活三被隐藏 ⇒ 三的计数少一 ⇒
-   *   达不到 suspect 门槛 ⇒ **整个严格判定被跳过**。
-   *   ⚠ 该漏判**无法靠"放宽三的计数口径"修好**（`_probe-planC14.js` V1/V2 仍漏 9~11%）
-   *   ——窗口模型与严格谓词本质不同。要 sound 只能**扩大触发面**（现行 V3 口径：
-   *   任一方向 >= 眠三即复核，严格算法调用率 14.6%、遗漏率 0%）或**无条件严格**（100%）。
-   *   故现行门槛取 V3：`suspect = 任一方向 >= SLEEP_THREE`。sound（0 遗漏）且比
-   *   无条件严格快约 4.4×（0.82 vs 3.63 µs/次）。
+   * ★ 为什么禁用"廉价预检"（曾经的错误认知，勿重走）：
+   *   曾假设"窗口模型判三/四只会多判不会漏判，可当廉价预检"——**实测是错的**：
+   *   `forbiddenAt` 判定的禁手点里 **≈20~24%** 被 `levelAt` 的旧预检判成**合法等级并给正分**
+   *   （"双活三→四三"、"长连→连五(+1e8)"等）⇒ 引擎会真的走出禁手点自败。
+   *   根因：窗口模型 `classifyIdx` **每方向只报一个最强型**，而严格判定
+   *   `isFourDir`/`isOpenThreeDir` **逐方向独立计数**。当同一方向严格**同时**是"四"与
+   *   "活三"时，窗口只报"冲四"⇒ 活三被隐藏 ⇒ 三的计数少一 ⇒ 达不到门槛 ⇒ 严格判定被跳过。
+   *   ⚠ 放宽"三"的计数口径也修不好（仍漏 9~11%）——窗口模型与严格谓词本质不同。
+   *   ⇒ 要 sound 只能无条件调严格算法（见下方 levelAt）。
    */
   const FD_NONE = 0;
 
@@ -349,15 +350,15 @@
   }
 
   /* ---------- A11 禁手评估缓存（§4.12，纯缓存层）----------
-   * ★★ 键设计的血泪史（改这条前必须读）：初版用 `board.join('')` 做键，
-   *   端到端**反而慢 1.415×**（`tools/_a11-speed.js`：off 12474ms → on 17648ms）。
-   *   拆解（`_a11-micro.js`）：`forbiddenCore` 裸算 3.67 µs ／ 全盘 join 键构造 3.87 µs —— **键比计算还贵**。
-   *   ⇒ 改**局部窗整数哈希键**：`_a11-locality.js` 实证结论只依赖 idx 周围 R 内格子
-   *     （58674 次真实调用 0 冲突；五连/四/活三判定半径 ≤5，取 R=5=121 格留余量）。
-   *     双 32 位哈希（FNV-1a ⊕ 混合器）≈64 bit，构造 0.56 µs（比全盘 join 快 15×）⇒ 端到端 0.794×（省 20.6%）。
-   *   ⚠ **哈希碰撞会静默给错禁手结论**是本条最危险失效模式 ⇒ 由"关态 vs 开态 diff==0"+ 局部性护栏双双守住。
-   * ★ 绝不把结果写进棋盘结构（undo 失效）——只用外部 Map；容量策略照抄 LINE_MEMO（超限整表 clear，O(1) 不 OOM）。
-   * ★ 门控：search 的 think() 依 cfg.forbidMemo 调 forbidMemoSet；默认 false=现状（每次重算，逐位不变）。
+  * ★★ 键设计（改这条前必须读）：**不可**用 `board.join('')` 做键——
+  *   实测端到端反而慢 1.415×：键构造 3.87µs 比 `forbiddenCore` 裸算 3.67µs **还贵**。
+  *   ⇒ 用**局部窗整数哈希键**：结论只依赖 idx 周围 R 内格子（58674 次真实调用 0 冲突；
+  *     五连/四/活三判定半径 ≤5，取 R=5=121 格留余量）。双 32 位哈希（FNV-1a ⊕ 混合器）
+  *     ≈64 bit，构造 0.56µs ⇒ 端到端 0.794×（省 20.6%）。
+  *   ⚠ **哈希碰撞会静默给错禁手结论**是本条最危险失效模式 ⇒ 由"关态 vs 开态 diff==0"
+  *     + 局部性护栏双双守住（见 test/forbid-memo.test.js）。
+  * ★ 绝不把结果写进棋盘结构（undo 失效）——只用外部 Map；容量策略照抄 LINE_MEMO（超限整表 clear，O(1) 不 OOM）。
+  * ★ 门控：search 的 think() 依 cfg.forbidMemo 调 forbidMemoSet；默认 false=现状（每次重算，逐位不变）。
    *   `forbiddenAt` 是唯一入口 ⇒ search/threat/eval/coach 各处调用无需改一行即可受益。
    */
   const FORBID_MEMO = new Map();
@@ -417,20 +418,17 @@
 
   // 热路径入口：假设 player 落 idx，直接返回组合等级（无任何堆分配）
   //
-  // ★ Renju-黑（mode>0）时**无条件调用严格算法**（2026-09-20，#33）。
-  //   曾用"廉价预检"跳过大多数点，但实测该预检**双向不可靠**：
-  //     · 假阴（漏判禁手）：19.5~23.7% —— 把必败点判成合法并给**正分**
-  //       （`长连` 甚至 +1e8=WIN），实测导致引擎**真的走出禁手点自败**
-  //       （`_probe-planC9.js`：12 个"漏判点排第 1"的局面里 6 次走禁手）。
-  //     · 假阳（误判合法）：根因是 `decideOf` 用**窗口**计数重判禁手，
-  //       与 `forbiddenCore` 的**严格**口径不一致 → 引擎拒绝走合法好着。
-  //   且**任何基于窗口输出的门槛都无法 sound**：存在"窗口最强型=活二、严格=活三"的
-  //   形态（`_probe-planC17.js`），故"任一方向>=眠三"的放宽版仍漏 0.17%
-  //   （`_probe-planC18.js`）。⇒ 唯一 100% sound 的做法是**恒调严格算法**。
-  //   代价实测可接受：`levelAt` 单次 0.33→5.5 µs（`_probe-planC20.js`），
-  //   但真实搜索**节点数与深度完全不变**、耗时仅 +25%（`_probe-planC19.js`）。
+  // ★ Renju-黑（mode>0）时**无条件调用严格算法**：曾用"廉价预检"跳过大多数点，
+  //   但该预检**双向不可靠**——
+  //     · 假阴 19.5~23.7%：把必败点判成合法并给**正分**（长连甚至 +1e8=WIN），
+  //       实测导致引擎**真的走出禁手点自败**；
+  //     · 假阳：decideOf 用**窗口**计数重判禁手，与 forbiddenCore 的**严格**口径
+  //       不一致 → 引擎拒绝走合法好着。
+  //   且存在"窗口最强型=活二、严格=活三"的形态 ⇒ 任何基于窗口输出的门槛都无法
+  //   sound ⇒ 唯一 100% sound 的做法是恒调严格算法。
+  //   代价可接受：levelAt 单次 0.33→5.5µs，但真实搜索节点数与深度不变、耗时 +25%。
   //
-  // ★ 语义约定（#33）：mode>0 时返回值为**严格判定结果**——
+  // ★ 语义约定：mode>0 时返回值为**严格判定结果**——
   //   禁手 ⇒ OVERLINE / DOUBLE_FOUR / DOUBLE_THREE；合法 ⇒ **绝不返回这三个值**
   //   （否则调用方无法用"等级是否属于禁手集"来区分真假禁手）。
   //   故合法时用 `decideOf(...,0)` 后**再把禁手等级降为等价的合法等级**。
@@ -596,7 +594,7 @@
    * 目标：O(1) 摊销地维护「全盘材料计数」（双方各 8 个单棋型计数），
    *       供 A5 `wldOf` 做 3 次比较判定胜负。
    *
-   * ★ 口径纪律（施工图 §4.7 原文 + Carbon A2 的教训）：
+   * ★ 口径纪律：
    *   **不缓存"等级计数"**（`levelAt` 的等级有 规则/角色/手番 三维），
    *   **只缓存"单棋型计数"**这类规则无关的事实。这与 `scanLineInto` / `countBoth`
    *   的既有口径**完全一致** ⇒ 与 `lc.tot` 是同一个量，可逐位对拍。
@@ -606,7 +604,7 @@
    *   · 不同：`lc` 按**线**聚合（72 线 × 双方），`material` 按**方**聚合并**原地递增**。
    *   · 都能被同一个 `pos.onCell` 钩子维护 ⇒ **不引入第二套钩子机制**（§4.7 要求）。
    *
-   * ★ 实现方式（2026-09-20 实测教训）：**原地 `+= delta`，不换数组引用**。
+   * ★ 实现方式：**原地 `+= delta`，不换数组引用**。
    *   原因：`eval.staticEvalPos` 每次热路径取 `pos.lc.tot` 生成新 `Int32Array`
    *   会额外触发一次分配（实测 makeMove 0.873→2.0µs，−2.3×），改完后 1.102µs。
    *   ⇒ 增量结构必须**原地改**；为此 `core.unmakeMove` 也补上了 `onCell` 通知
@@ -615,19 +613,11 @@
   const NCLS = NT;                       // 与线分缓存共用槽位布局（见 P_OF_T）
   const P_OF_CLS = P_OF_T;               // 槽位 t ↔ 单棋型
 
-  // 过格点 idx 的 4 条线的**线号**（沿用 CELL_LINES 的"首次出现即归属"构造，
-  // 保证与 lc 的维护范围逐位一致）。未参与扫描的方向记 −1。
-  const CELL_LINES4 = (function () {
-    const a = new Int32Array(NN * 4).fill(-1);
-    for (let li = 0; li < LINES.length; li++) {
-      const line = LINES[li];
-      for (let k = 0; k < line.length; k++) {
-        const b = line[k] * 4;
-        for (let s = 0; s < 4; s++) if (a[b + s] === -1) { a[b + s] = li; break; }
-      }
-    }
-    return a;
-  })();
+  // 过格点 idx 的 4 条线的**线号**。
+  // ★ 评审：此处曾是 CELL_LINES 的逐字复制（同构造、同"首次出现即归属"），
+  //   只因名字不同而重复构建；改了 CELL_LINES 不会改它 ⇒ 增量缓存静默漂移风险。
+  //   A6 本就要求与 lc 逐位一致，故直接别名共用。
+  const CELL_LINES4 = CELL_LINES;
 
   // 统计**单方** player 在"过 idx 的 4 条线"上的棋型计数（写进 out[off..off+7]）
   // 注意：这不是"该点的局部棋型"，而是 A6 增量算法真正需要的量——
@@ -683,7 +673,7 @@
 
   // 增量：重算过 idx 的 4 条线，原地修正 material（**必须原地**，见上方注释）。
   //
-  // ★ 语义（易错，2026-09-20 实测踩坑）：**调用时棋盘处于"该手已落"的状态**（post 相位），
+  // ★ 语义（易错）：**调用时棋盘处于"该手已落"的状态**（post 相位），
   //   而 `before` 是"该手落子前"这 4 条线的计数快照（cellHook 在 pre 相位采集）。
   //   算法：逐线 `mat += (当前线计数 − before 里的线计数)`；每一步都与 `lc` 同构
   //   （同一条线跨状态取差），故 `material` 与 `lc.tot` 天然逐位一致（对拍为 0）。
@@ -788,14 +778,14 @@
     P, PNAME, L, LNAME, WIN, FORBIDDEN,
     LEVEL_M, LEVEL_T, SINGLE_M, SINGLE_T,
     // §17.4 调参钩子（离线局部搜索用；线上默认全为 null，取值即出厂表）
-    setTune, resetTune, tuneState,
+    setTune, resetTune, tuneState, tuneGen: () => TUNE_GEN,
     colorRole, decideLevel, decideOf, classifyAt, classifyWindow, gradeAt, windowAt,
     // §26 严格禁手判定（Renju 黑）
     FD_NONE, forbiddenAt, forbiddenCore, forbidMode, isFourDir, isOpenThreeDir,
     // A11 禁手评估缓存（§4.12）：纯缓存层，语义与 forbiddenAt 逐位一致
     forbiddenAtCached, forbidMemoSet, forbidMemoClear, forbidMemoStats,
     // 整数编码热路径（§33.2）
-    WCODE_N, codeAt, decode9, classifyCode, classifyIdx, dirsAt, levelAt,
+    WCODE_N, codeAt, decode9, classifyCode, classifyIdx, dirsAt, levelAt, W9,
     LINES, scanRuns, countAll, countBoth, zeroCounts, levelScore, singleScore,
     // §33.3 增量线分缓存
     NT, P_OF_T, sideOff, CELL_LINES, scanLineInto, newLineCache, cacheUpdate,

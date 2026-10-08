@@ -11,7 +11,7 @@
 - **规则**：`freestyle`（无禁手，长连算胜）、`renju`（RIF 有禁手：黑棋长连 / 四四 / 三三判负，恰好五连优先）。
 - **运行环境**：浏览器（经典 `<script>` + Blob Worker）与 Node（CommonJS 单测 / 工具）双目标。
 - **产物**：单文件 `gomoku.html` 可 `file://` 直开；`engine/` 源码经 `tools/build-worker-src.js` 打包成 Worker 源码。
-- **规模**：`engine/` 21 文件、`ui/` 9 文件、`tools/` 31 文件、`test/` 27 文件；309 项 Node 单测全绿。
+- **规模**：`engine/` 13 模块、`ui/` 9 模块、`tools/` 28 个脚本、`test/` 25 个测试文件；316 项 Node 单测全绿。
 
 ### 1.1 顶层模块图
 
@@ -63,7 +63,7 @@ test/                  node:test 单测 + positions40.json 等数据
 | `node tools/build-worker-src.js` | `engine/*.js` | `engine/worker-src.js` | 拼成一段源码字符串挂 `G.WORKER_SRC` + `G.WORKER_SRC_HASH`（SHA1 前 16 位） |
 
 - 产物纪律：构建脚本**只做文本合并**，不改语义；`gomoku.html` 改写后须重跑浏览器实跑（沙箱外 CDP）。
-- `engine/worker-src.js` 体积上限 **208 KB**（实测 ~202 KB）。`book-lines.js` 已退出产物，由 `book-tree.js`（前缀树，~29 KB）覆盖。
+- `engine/worker-src.js` 体积上限 **216 KB**（实测 ~210 KB）。`book-lines.js` 已退出 worker 产物，由 `book-tree.js`（前缀树，~29 KB）覆盖。
 
 ### 2.2 脚本加载顺序（`index.html`）
 
@@ -87,8 +87,8 @@ ui/menu → render → touch → ai → prefs → booklib → record → panels 
 **局面对象 `createPosition()`**：
 ```
 { board, stm, stones, zobHi, zobLo, hist[],
-  lc: null,            // 增量线分缓存（§5.4）
-  material: null,      // 增量材料表（§5.5）
+  lc: null,            // 增量线分缓存（见 §5.5）
+  material: null,      // 增量材料表（见下）
   assertIncr: null }   // 自检钩子（默认关）
 ```
 
@@ -134,7 +134,7 @@ ui/menu → render → touch → ai → prefs → booklib → record → panels 
 
 - 组合等级分值 `LEVEL_M`（含 `WIN=1e8`）；对方分值用因子 `LEVEL_T`（取值 `V_opp=round(t*M)`）。
 - `singleScore` / `levelScore`：按 `rule`×`role`×`relation` 取值。Renju 黑棋的 `DOUBLE_FOUR/DOUBLE_THREE/OVERLINE` 返回 `FORBIDDEN=-1e9`。
-- **调参钩子 `TUNE`**（§15.3）：引擎内所有取值经 `Mof/Tof/Lof` 解析，先查 `TUNE` 覆盖。`tools/bench-tune.js` 可离线局部搜索，胜出值回写 `LEVEL_M` 后 `resetTune()`。不变量：`FIVE=OVERLINE=WIN`、四 > 活三、活四 > 双三——禁止把胜负分/长度排序调反。
+- **调参钩子 `TUNE`**：引擎内所有取值经 `Mof/Tof/Lof` 解析，先查 `TUNE` 覆盖。`tools/bench-tune.js` 可离线局部搜索，胜出值回写 `LEVEL_M` 后 `resetTune()`。不变量：`FIVE=OVERLINE=WIN`、四 > 活三、活四 > 双三——禁止把胜负分/长度排序调反。
 
 ### 5.4 严格禁手判定与缓存
 
@@ -144,9 +144,9 @@ ui/menu → render → touch → ai → prefs → booklib → record → panels 
 
 ### 5.5 增量缓存（性能关键）
 
-- **线分缓存 `lc`**（§5.5 同节）：72 条 5+ 格直线预建；`CELL_LINES` 记每格所属 4 条线。`cacheUpdate` 在着法前后重算这 4 条线、修正 `tot`。`staticEvalPos` 读 `lc.tot` 得 O(1) 静态分。
-- **材料表 `material`**（A6，默认关）：只计双方 8 类单棋型计数，口径与 `lc.tot` 逐位一致；供 `wldCode` 做 O(1) 胜负判定。`pos.onCell` 钩子原地递增（`materialInc`）维护。
-- **O(1) 胜负 `wldCode`**（A5）：基于 `material` 三步比较返回 `{±100,±1,0}`，与静态评估终局短路同一套口径；长连仅在 renju 黑为禁手负。
+- **线分缓存 `lc`**：72 条 5+ 格直线预建；`CELL_LINES` 记每格所属 4 条线。`cacheUpdate` 在着法前后重算这 4 条线、修正 `tot`。`staticEvalPos` 读 `lc.tot` 得 O(1) 静态分。
+- **材料表 `material`**（默认关）：只计双方 8 类单棋型计数，口径与 `lc.tot` 逐位一致；供 `wldCode` 做 O(1) 胜负判定。`pos.onCell` 钩子原地递增（`materialInc`）维护。
+- **O(1) 胜负 `wldCode`**：基于 `material` 三步比较返回 `{±100,±1,0}`，与静态评估终局短路同一套口径；长连仅在 renju 黑为禁手负。
 
 ---
 
@@ -227,7 +227,7 @@ ui/menu → render → touch → ai → prefs → booklib → record → panels 
 
 ### 9.4 数据许可
 
-开局库 / 棋谱库 / 杀题库数据源自 **RenjuNet**（非商业）。仓库已剔除真实数据集（`data-raw/`、`test/data/positions-renjunet.json`），保留 `tools/gen-*.js` 生成器可重跑；运行时数据以打包紧凑串内联进产物。
+开局库 / 棋谱库 / 杀题库数据源自 **RenjuNet**（非商业）。仓库已剔除原始数据集（`data-raw/`、`test/data/positions-renjunet.json`），保留 `tools/gen-*.js` 生成器可重跑；运行时数据以打包紧凑串内联进产物。第三方引擎（Carbon-Gomoku / PentaZen / Stahlfaust）仅作研究参考，未纳入本仓库。
 
 ---
 
@@ -253,7 +253,7 @@ ui/menu → render → touch → ai → prefs → booklib → record → panels 
 
 ---
 
-## 12. 算子化威胁枚举（`engine/operators.js`，A12）
+## 12. 算子化威胁枚举（`engine/operators.js`）
 
 把"成五点 / 活三 / 冲四"的枚举统一为**算子对象**（一次威胁 + 其强制防守）。`classify` 与 `threat.threatMoves` 的 kind 语义同一套；**等价性由 `test/operators.test.js` 对拍保证**（集合 + kind 映射 diff==0），`threat.js` 不动。
 
@@ -289,7 +289,7 @@ Worker 端消息路由 `handle(req)` → 一条响应（不含 `id`，由主线�
 ### 14.2 AI 客户端 `ui/ai.js`
 
 - **后端优先级**：Blob Worker（源码来自 `G.WORKER_SRC`）→ 主线程引擎兜底（Worker `file://` 被拦 / 创建失败 / 握手超时）。
-- **请求调度**（2026-09-22 修复的实测缺陷）：`move` 不被抢占——辅助请求（hint/judge/heat/analyze）排队等 move 结束，同种只留最新、被替换者立即 `E_ABORTED` 收尾。
+- **请求调度**：`move` 不被抢占——辅助请求（hint/judge/heat/analyze）排队等 move 结束，同种只留最新、被替换者立即 `E_ABORTED` 收尾。
 - **看门狗**：Worker 超时不响应（45s）必降级主线程并放行排队辅助请求，避免永久"思考中"。
 - **id 机制**：每请求自增 `id`，只认当前 `id` 响应，其余丢弃（悔棋/重开安全）。
 
@@ -338,26 +338,19 @@ Worker 端消息路由 `handle(req)` → 一条响应（不含 `id`，由主线�
 
 ---
 
-## 16. 数据许可与第三方
+## 16. 构建、发布与质量纪律
 
-- **RenjuNet 数据**（开局库 / 棋谱库 / 杀题库）非商业用途。仓库剔除原始数据集，保留 `tools/gen-*.js` 生成器（可重跑）；运行时数据以打包紧凑串内联进产物。
-- **第三方引擎 fork**（Carbon-Gomoku / PentaZen / Stahlfaust）仅作研究参考，未纳入本仓库。
-
----
-
-## 17. 构建、发布与 CI
+### 16.1 构建与 CI
 
 - `npm run build`：`build.mjs` 生成 `gomoku.html`；`npm run build:worker`：`build-worker-src.js` 重生成 `worker-src.js`。
 - `npm test`：`node --test test/*.test.js`（**逐文件跑**，逐文件传目录不可靠）。
-- `worker-src.js` 体积硬上限 208 KB（CI 断言）；改写引擎源码须重跑 `build-worker-src.js`。
+- `worker-src.js` 体积硬上限 216 KB（CI 断言）；改写引擎源码须重跑 `build-worker-src.js`。
 - GitHub Actions（`.github/workflows/ci.yml`）：Node 18/20/22 自动跑测试。
-- **诚实纪律**：棋力相关改动须附自对弈 Elo 与 95% 置信区间；若 CI 含 0，不宣称棋力提升（实测 30 局自对弈 Elo +11.6，CI [−112.8,+136.0] → 不声称棋力提升）。
 
----
+### 16.2 测试纪律
 
-## 18. 测试与质量纪律
-
-- **Node 单测**：`test/*.test.js`，`require('node:test')`；覆盖 core/rules/patterns/eval/search/threat/book/coach/record/operators/worker 与 UI 纯函数（cand-bit/touch/ui-features）。当前 309 项全绿。
-- **对拍纪律**：增量结构（material/lc）与全量 `countBoth` 逐位一致；operators 与 threat.threatMoves 集合等价；worker-src 改写后 hash 不变。
+- **Node 单测**：`test/*.test.js`（`node:test`），覆盖引擎全部模块与 UI 纯函数。当前 316 项全绿。
+- **对拍纪律**：增量结构（material/lc）与全量 `countBoth` 逐位一致；operators 与 threat.threatMoves 集合等价；改写源码后 worker-src hash 同步。
 - **浏览器实跑不可省**：落子/绘制/动画/触屏/Worker 须沙箱外 CDP 实跑（含截图与异常监听），本地全绿 ≠ 线上可用（发布是 https 跨源快照，改完须重发布并跑线上核对）。
 - **守卫双向验证**：新增正确性守卫须人为注入缺陷确认变红、再还原。
+- **诚实纪律**：棋力相关改动须附自对弈 Elo 与 95% 置信区间；若 CI 含 0，不宣称棋力提升（实测 30 局自对弈 Elo +11.6，CI [−112.8,+136.0] → 不声称棋力提升）。

@@ -63,14 +63,14 @@
   }
   function xorZob(pos, arr) { pos.zobHi ^= arr[0]; pos.zobLo ^= arr[1]; }
 
-  // ★ 钩子事件约定（A6，2026-09-20）：`pos.onCell(pos, idx, phase)`
+  // ★ 钩子事件约定：`pos.onCell(pos, idx, phase)`
   //   phase = 'pre'  该手**尚未**落到棋盘（紧邻 makeMove 之前 / unmakeMove 之后）
   //   phase = 'post' 该手**已**落到棋盘（makeMove 之后 / 紧邻 unmakeMove 之前）
-  //   为什么需要两相：原地递增型增量结构（material）必须在"变化前后各读一次"才能求差；
-  //   只有一个 post 相位时，`before` 只能从"上一次 post"里拿——而**其他落子会改变同一条线**，
-  //   于是差值与真值漂移（实测 2026/2400 步：把两只白子之间的空点填黑，白活二本该消失，
-  //   差分里却从未记录它出现过）。原 §33.3 的 `lc` 用"物化新数组 + 换引用"绕开了这个问题
-  //   （cellHook 用 `old || pos.board` 当旧内容），A6 换成原地递增后必须显式给 pre 相位。
+  //   为什么必须两相：原地递增型增量结构（material）必须在"变化前后各读一次"才能求差。
+  //   只有一个 post 相位时 before 只能取"上一次 post"——而**其他落子会改变同一条线**，
+  //   差值与真值必然漂移（实测 2026/2400 步：填黑两只白子之间的空点，白活二本该消失，
+  //   差分里却从未记录它出现过）。§33.3 的 lc 用"物化新数组+换引用"绕开了该问题，
+  //   material 改原地递增后必须显式给 pre 相位。
   function notifyCell(pos, i, phase) {
     if (!pos.onCell) return;
     try {

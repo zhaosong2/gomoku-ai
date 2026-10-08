@@ -6,6 +6,8 @@ node_modules/
 
 # WorkBuddy internal data (project state, not source)
 .workbuddy/
+# 发布应用标记（WorkBuddy 内部产物，与源码无关）
+.wbapp_*.genie
 
 # License-restricted datasets (not redistributed; see README "Data & License")
 data-raw/

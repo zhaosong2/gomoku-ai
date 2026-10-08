@@ -27,30 +27,30 @@
   /* ---------- 成五点（移入本模块，search 复用） ----------
    * mode：禁手语境（PAT.forbidMode）。mode>0 时**禁手点不是成五点**（§26.2），
    *      且长连不算成五（黑棋长连是禁手，不是胜）。
-   * rule：整体规则名，交给 RU.isWin 做"恰好五连"判定。
+   *
+   * ★ 评审优化：改走 `RU.isWinAt`（索引版）。原实现每个候选都
+   *   `board[i]=p → isWin(x,y,…) → board[i]=EMPTY`：坐标化 + 最多 8 次方向扫描，
+   *   且**裸写棋盘**绕过 onCell 钩子，与 §33.3 增量缓存（pos.lc/material）打架。
+   *   isWinAt 免坐标、免写盘、单遍四方向，与 isWin 逐位等价（已对拍 6080 样本）。
+   *   ⚠ 口径纪律：**不可**改用 fivePointsAfter（窗口口径）——Renju-黑"长连端点"
+   *     场景下窗口半径 4 看不见第 6 子 ⇒ 会把非成五点误判为成五点。
    */
   function hasFivePoint(board, p, mode, rule) {
-    const cand = EV.candidates(board, 2);
-    for (let k = 0; k < cand.length; k++) {
-      const i = cand[k], x = i % N, y = (i / N) | 0;
+    const n = EV.candidatesInto(board, 2);
+    for (let k = 0; k < n; k++) {
+      const i = EV.candAt(k);
       if (mode && PAT.forbiddenAt(board, i, mode)) continue;     // 禁手点不是成五点
-      board[i] = p;
-      const win = RU.isWin(board, x, y, p, rule);
-      board[i] = EMPTY;
-      if (win) return i;
+      if (RU.isWinAt(board, i, p, rule)) return i;
     }
     return -1;
   }
   function winningPoints(board, p, mode, rule) {
     const out = [];
-    const cand = EV.candidates(board, 2);
-    for (let k = 0; k < cand.length; k++) {
-      const i = cand[k], x = i % N, y = (i / N) | 0;
+    const n = EV.candidatesInto(board, 2);
+    for (let k = 0; k < n; k++) {
+      const i = EV.candAt(k);
       if (mode && PAT.forbiddenAt(board, i, mode)) continue;     // 禁手点不是成五点
-      board[i] = p;
-      const win = RU.isWin(board, x, y, p, rule);
-      board[i] = EMPTY;
-      if (win) out.push(i);
+      if (RU.isWinAt(board, i, p, rule)) out.push(i);
     }
     return out;
   }
@@ -311,7 +311,7 @@
    *   本实现取该结论的保守版：重放 path，在每个攻方落点**之前**检查守方是否已有成五点
    *   （类别 0，最强威胁）。有 ⇒ 我方这条线走不完 ⇒ 可反驳。
    *
-   * ★★ path 的语义（易错，2026-09-20 实测踩坑）：
+   * ★★ path 的语义（易错）：
    *   `dfs` 里 `path.push(i)` **只推攻方手**；守方应手是 dfs 内部直接 makeMove 落盘、**不入 path**
    *   （见 dfs 的 `cnt === 1` 分支）。故 path = **纯攻方手序列**，与 `verifyPath` 的解释一致。
    *   refutePath 必须按此重放：每走一步攻方手，**自己补上守方的强制应手**（唯一挡点）。
@@ -344,7 +344,7 @@
       placed++;
       // ★ 先判攻方是否已终局（成五 / ≥2 成五点）⇒ 对局已定、守方来不及 ⇒ 该线成立。
       //   ⚠ 必须**在查守方之前**判：否则"攻方活四 + 守方另有成五点"的合法线会被误杀
-      //   （2026-09-20 实测校正；这正是施工图警告的假阴性风险）。
+      //   （这正是假阴性风险所在）。
       const atkWon = RU.isWin(pos.board, i % N, (i / N) | 0, atk, rule, om);
       const atkThreats = winningPoints(pos.board, atk, atkMode, rule).length;
       if (atkWon || atkThreats >= 2) { undo(); return false; }

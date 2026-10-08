@@ -33,6 +33,8 @@
 
 ## Quick Start
 
+**Play online**: <https://gomoku-ai-02487.app.workbuddy.host/>
+
 | Goal | Action |
 | --- | --- |
 | **Play now** | Open [`gomoku.html`](gomoku.html) in a browser (double-click; zero dependency) |
@@ -68,7 +70,7 @@ gomoku-ai/
 │   ├── worker-src.js     # ★ auto-generated: Worker bundle (do NOT edit by hand)
 │   └── data/             # Opening book / mate puzzles / 26-opening definitions
 ├── ui/                   # UI layer (render / interaction / kifu panel / hints / touch)
-├── test/                 # Unit tests (node:test, 309 cases total)
+├── test/                 # Unit tests (node:test, 316 cases total)
 ├── tools/                # Build / benchmark / generate / verify tools
 ├── docs/                 # Design docs
 │   └── design.md         # Full technical design (v3.41)

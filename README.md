@@ -13,6 +13,28 @@
 
 ---
 
+## 界面预览 (Screenshots)
+
+> 截图取自当前版本（v3.41），由 `tools/screenshot.js` 驱动真实浏览器（Chrome DevTools Protocol）生成。
+
+**初始界面**：规则 / 对战模式 / 执子 / 难度 / 时限与显示叠加层均可配置，面板按需展开
+
+![初始界面与全部设置项](assets/screenshot-board_start.png)
+
+**人机对局 · 提示 Top-5 与形势判断**（候选圈为引擎推荐点，顶部徽标为落子顺序）
+
+![人机对局界面：提示 Top-5 与形势判断](assets/screenshot-judge_panel.png)
+
+**读谱与逐手分析**：载入棋谱后可逐步回放，`形势判断` 给出黑方胜率与**杀着标记**（如「黑有杀（VCF 1 手）」），下方棋谱库显示匹配到的开局库残局
+
+![棋谱读谱、形势判断与开局库匹配](assets/screenshot-record_panel.png)
+
+**移动端 / 触屏布局**（414×896）：棋盘在上、面板在下纵向堆叠
+
+![移动端布局](assets/screenshot-mobile.png)
+
+---
+
 ## 特性 (Features)
 
 - **纯前端 · 零依赖 · 单文件**：双击 `gomoku.html` 即玩，`file://` 下可用，无需服务器、无需安装。

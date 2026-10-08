@@ -15,6 +15,28 @@
 
 ---
 
+## Screenshots
+
+> Captured from the current version (v3.41) by driving a real browser (Chrome DevTools Protocol) via `tools/screenshot.js`.
+
+**Initial interface**: rule / mode / side / difficulty / time budget and display overlays are all configurable; panels expand on demand
+
+![Initial interface with all settings](assets/screenshot-board_start.png)
+
+**Human-vs-AI with hint Top-5 and position judgement** (circles mark the engine's recommended moves; badges show move order)
+
+![Playing interface with hint Top-5 and judgement](assets/screenshot-judge_panel.png)
+
+**Kifu reading and per-move analysis**: judgement gives Black's win rate plus a **mate flag** (e.g. "Black has a mate (VCF 1 move)"); the kifu library below shows matched opening-book endgames
+
+![Kifu reading, judgement and opening-book match](assets/screenshot-record_panel.png)
+
+**Mobile / touch layout** (414×896): board on top, panels stacked below
+
+![Mobile layout](assets/screenshot-mobile.png)
+
+---
+
 ## Features
 
 - **Pure frontend · zero dependency · single file**: Double-click `gomoku.html` to play. Works under `file://` — no server, no install.
